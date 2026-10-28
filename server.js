@@ -117,6 +117,7 @@ io.on('connection', (socket) => {
       alive: true,
       shield: false,
       ability: null,
+      abilityShots: 0, // Кількість пострілів для спец-зброї
       bulletsCount: 10,
       lastBulletRegen: Date.now(),
       lastShot: 0
@@ -166,6 +167,7 @@ io.on('connection', (socket) => {
       }
     }
 
+    // Підбір бонусів з ящика
     for (let i = room.powerups.length - 1; i >= 0; i--) {
       const pu = room.powerups[i];
       if (Math.hypot(p.x - pu.x, p.y - pu.y) < 25) {
@@ -173,6 +175,8 @@ io.on('connection', (socket) => {
           p.shield = true;
         } else {
           p.ability = pu.type;
+          // Надаємо заряди залежно від зброї: кулемет - 15 пострілів, ракета/простріл - 5 пострілів, rc - 1 дрон
+          p.abilityShots = pu.type === 'machinegun' ? 15 : pu.type === 'rc' ? 1 : 5;
         }
         room.powerups.splice(i, 1);
         break;
@@ -197,7 +201,8 @@ io.on('connection', (socket) => {
     p.lastShot = now;
 
     if (p.ability === 'rc') {
-      p.ability = null;
+      p.abilityShots--;
+      if (p.abilityShots <= 0) p.ability = null;
       room.miniTanks.push({
         ownerId: socket.id,
         x: p.x + Math.cos(p.angle) * 25,
@@ -209,7 +214,13 @@ io.on('connection', (socket) => {
 
     const isHoming = p.ability === 'homing';
     const isPierce = p.ability === 'pierce';
-    if (p.ability && p.ability !== 'machinegun') p.ability = null;
+    const isMachineGun = p.ability === 'machinegun';
+
+    // Зменшуємо лічильник зарядів спец-зброї
+    if (p.ability) {
+      p.abilityShots--;
+      if (p.abilityShots <= 0) p.ability = null;
+    }
 
     room.bullets.push({
       ownerId: socket.id,
@@ -337,6 +348,8 @@ setInterval(() => {
                 const spawn = getSpawnPoint(room.players, room.walls);
                 p.x = spawn.x; p.y = spawn.y; p.alive = true;
                 p.bulletsCount = 10;
+                p.ability = null;
+                p.shield = false;
               }
             }, 3000);
           }
