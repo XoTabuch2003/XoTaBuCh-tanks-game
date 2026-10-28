@@ -117,7 +117,7 @@ io.on('connection', (socket) => {
       alive: true,
       shield: false,
       ability: null,
-      bulletsCount: 10, // Початок з 10 кулями
+      bulletsCount: 10,
       lastBulletRegen: Date.now(),
       lastShot: 0
     };
@@ -134,7 +134,6 @@ io.on('connection', (socket) => {
     const p = room.players[socket.id];
     if (!p.alive) return;
 
-    // Відновлення 1 кулі кожні 2 секунди (ліміт 10)
     const now = Date.now();
     if (p.bulletsCount < 10 && now - p.lastBulletRegen > 2000) {
       p.bulletsCount++;
@@ -167,7 +166,6 @@ io.on('connection', (socket) => {
       }
     }
 
-    // Підбір бонусів
     for (let i = room.powerups.length - 1; i >= 0; i--) {
       const pu = room.powerups[i];
       if (Math.hypot(p.x - pu.x, p.y - pu.y) < 25) {
@@ -194,7 +192,7 @@ io.on('connection', (socket) => {
     const cooldown = p.ability === 'machinegun' ? 150 : 400;
     if (now - p.lastShot < cooldown) return;
     
-    if (p.bulletsCount <= 0) return; // Немає доступних куль
+    if (p.bulletsCount <= 0) return;
     p.bulletsCount--;
     p.lastShot = now;
 
@@ -238,7 +236,6 @@ setInterval(() => {
   for (const roomId in rooms) {
     const room = rooms[roomId];
     
-    // Рух міні-танків
     for (let i = room.miniTanks.length - 1; i >= 0; i--) {
       const rc = room.miniTanks[i];
       let closestEnemy = null;
@@ -274,7 +271,6 @@ setInterval(() => {
       }
     }
 
-    // Рух куль
     for (let i = room.bullets.length - 1; i >= 0; i--) {
       const b = room.bullets[i];
 
@@ -324,7 +320,7 @@ setInterval(() => {
         }
       }
 
-      // Влучання у гравців (тепер і в себе також!)
+      // Влучання у гравців (тепер куля вбиває і власника, якщо він зловить власний рикошет)
       for (const pid in room.players) {
         const p = room.players[pid];
         if (!p.alive) continue;
@@ -334,7 +330,7 @@ setInterval(() => {
             p.shield = false;
           } else {
             p.alive = false;
-            // Якщо влучив у ворога — даємо ворогу очко, якщо у себе — очко не додається
+            // Якщо влучив у ворога — плюс очко ворогу. Якщо у себе — очко не додається.
             if (b.ownerId !== pid && room.players[b.ownerId]) {
               room.players[b.ownerId].score += 1;
             }
