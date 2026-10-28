@@ -144,6 +144,7 @@
     socket.on('tick', (data) => {
       ctxGame.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
 
+      // Малювання стін поточної мапи лабіринту
       ctxGame.strokeStyle = '#333';
       ctxGame.lineWidth = 6;
       for (const w of mazeWalls) {
@@ -153,13 +154,34 @@
         ctxGame.stroke();
       }
 
-      ctxGame.fillStyle = '#e74c3c';
+      // Малювання коробок з бонусами
+      if (data.powerups) {
+        for (const pu of data.powerups) {
+          ctxGame.fillStyle = pu.type === 'shield' ? '#3498db' : pu.type === 'homing' ? '#e74c3c' : pu.type === 'pierce' ? '#9b59b6' : pu.type === 'machinegun' ? '#e67e22' : '#2ecc71';
+          ctxGame.fillRect(pu.x - 12, pu.y - 12, 24, 24);
+          ctxGame.fillStyle = '#fff';
+          ctxGame.font = 'bold 12px sans-serif';
+          ctxGame.fillText(pu.type[0].toUpperCase(), pu.x - 4, pu.y + 4);
+        }
+      }
+
+      // Малювання міні-танків
+      if (data.miniTanks) {
+        for (const rc of data.miniTanks) {
+          ctxGame.fillStyle = '#d35400';
+          ctxGame.fillRect(rc.x - 6, rc.y - 6, 12, 12);
+        }
+      }
+
+      // Малювання куль
+      ctxGame.fillStyle = '#c0392b';
       for (const b of data.bullets) {
         ctxGame.beginPath();
         ctxGame.arc(b.x, b.y, 5, 0, Math.PI * 2);
         ctxGame.fill();
       }
 
+      // Малювання гравців
       for (const id in data.players) {
         const p = data.players[id];
         if (!p.alive) continue;
@@ -181,11 +203,20 @@
           ctxGame.fillRect(-15, -15, 30, 30);
         }
 
+        // Відображення щита навколо танка
+        if (p.shield) {
+          ctxGame.strokeStyle = '#3498db';
+          ctxGame.lineWidth = 3;
+          ctxGame.beginPath();
+          ctxGame.arc(0, 0, 24, 0, Math.PI * 2);
+          ctxGame.stroke();
+        }
+
         ctxGame.restore();
 
         ctxGame.fillStyle = '#000';
         ctxGame.font = '12px sans-serif';
-        ctxGame.fillText(`Очки: ${p.score}`, p.x - 20, p.y + 32);
+        ctxGame.fillText(`${p.name} (Очки: ${p.score})`, p.x - 30, p.y + 32);
       }
     });
   </script>
