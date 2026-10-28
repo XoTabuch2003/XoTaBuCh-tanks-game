@@ -18,6 +18,16 @@ const MAZE_WALLS = [
   [150, 0, 150, 350], [300, 150, 300, 500], [450, 0, 450, 350], [600, 150, 600, 500]
 ];
 
+// Безпечні фіксовані точки спавну в різних кутах лабіринту
+const SPAWN_POINTS = [
+  { x: 70, y: 70 },
+  { x: 730, y: 70 },
+  { x: 730, y: 430 },
+  { x: 70, y: 430 },
+  { x: 370, y: 70 },
+  { x: 370, y: 430 }
+];
+
 function checkWallCollision(x, y, radius, walls) {
   for (const w of walls) {
     const x1 = w[0], y1 = w[1], x2 = w[2], y2 = w[3];
@@ -32,14 +42,22 @@ function checkWallCollision(x, y, radius, walls) {
   return false;
 }
 
-// Генерація випадкової вільної позиції
-function getRandomPos() {
-  let x, y;
-  do {
-    x = 50 + Math.random() * 700;
-    y = 50 + Math.random() * 400;
-  } while (checkWallCollision(x, y, 30, MAZE_WALLS));
-  return { x, y };
+// Отримання вільної точки спавну
+function getSpawnPoint(existingPlayers) {
+  // Перемішуємо точки спавну
+  const shuffled = [...SPAWN_POINTS].sort(() => Math.random() - 0.5);
+  for (const pt of shuffled) {
+    let occupied = false;
+    for (const pid in existingPlayers) {
+      const p = existingPlayers[pid];
+      if (Math.hypot(p.x - pt.x, p.y - pt.y) < 50) {
+        occupied = true;
+        break;
+      }
+    }
+    if (!occupied) return pt;
+  }
+  return SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
 }
 
 io.on('connection', (socket) => {
@@ -55,30 +73,34 @@ io.on('connection', (socket) => {
         miniTanks: []
       };
       
-      // Спавн коробок з бонусами кожні 10 секунд
       setInterval(() => {
         const room = rooms[roomId];
         if (room && room.powerups.length < 3) {
-          const pos = getRandomPos();
+          let x, y;
+          do {
+            x = 50 + Math.random() * 700;
+            y = 50 + Math.random() * 400;
+          } while (checkWallCollision(x, y, 30, MAZE_WALLS));
+          
           const types = ['shield', 'homing', 'pierce', 'machinegun', 'rc'];
           const type = types[Math.floor(Math.random() * types.length)];
-          room.powerups.push({ id: Math.random().toString(), x: pos.x, y: pos.y, type });
+          room.powerups.push({ id: Math.random().toString(), x, y, type });
         }
       }, 10000);
     }
 
-    const pos = getRandomPos();
+    const spawn = getSpawnPoint(rooms[roomId].players);
     rooms[roomId].players[socket.id] = {
       id: socket.id,
       name: playerName || 'Танкіст',
       skin: skinData,
-      x: pos.x,
-      y: pos.y,
+      x: spawn.x,
+      y: spawn.y,
       angle: 0,
       score: 0,
       alive: true,
       shield: false,
-      ability: null, // 'homing', 'pierce', 'machinegun', 'rc'
+      ability: null,
       lastShot: 0
     };
 
@@ -90,7 +112,8 @@ io.on('connection', (socket) => {
     const roomId = socket.roomId;
     if (!roomId || !rooms[roomId] || !rooms[roomId].players[socket.id]) return;
 
-    const p = rooms[roomId].players[socket.id];
+    const room = rooms[roomId];
+    const p = room.players[socket.id];
     if (!p.alive) return;
 
     if (input.left) p.angle -= 0.06;
@@ -103,14 +126,29 @@ io.on('connection', (socket) => {
     if (speed !== 0) {
       const nextX = p.x + Math.cos(p.angle) * speed;
       const nextY = p.y + Math.sin(p.angle) * speed;
+      
+      // Перевірка зіткнення зі стінами
       if (!checkWallCollision(nextX, nextY, 18, MAZE_WALLS)) {
-        p.x = nextX;
-        p.y = nextY;
+        // Перевірка зіткнення з іншими танками (щоб не проїжджати крізь них)
+        let collisionWithTank = false;
+        for (const pid in room.players) {
+          if (pid === socket.id) continue;
+          const other = room.players[pid];
+          if (!other.alive) continue;
+          if (Math.hypot(nextX - other.x, nextY - other.y) < 36) {
+            collisionWithTank = true;
+            break;
+          }
+        }
+
+        if (!collisionWithTank) {
+          p.x = nextX;
+          p.y = nextY;
+        }
       }
     }
 
     // Підбір бонусів
-    const room = rooms[roomId];
     for (let i = room.powerups.length - 1; i >= 0; i--) {
       const pu = room.powerups[i];
       if (Math.hypot(p.x - pu.x, p.y - pu.y) < 25) {
@@ -137,7 +175,6 @@ io.on('connection', (socket) => {
     if (now - p.lastShot < cooldown) return;
     p.lastShot = now;
 
-    // Спеціальна здатність: Міні-танк
     if (p.ability === 'rc') {
       p.ability = null;
       rooms[roomId].miniTanks.push({
@@ -174,12 +211,11 @@ io.on('connection', (socket) => {
   });
 });
 
-// Ігровий цикл
 setInterval(() => {
   for (const roomId in rooms) {
     const room = rooms[roomId];
     
-    // Рух міні-танків на керуванні (їдуть до найближчого ворога)
+    // Рух міні-танків
     for (let i = room.miniTanks.length - 1; i >= 0; i--) {
       const rc = room.miniTanks[i];
       let closestEnemy = null;
@@ -202,9 +238,9 @@ setInterval(() => {
           if (room.players[rc.ownerId]) room.players[rc.ownerId].score += 1;
           room.miniTanks.splice(i, 1);
           setTimeout(() => {
-            if (room.players[pid]) {
-              const pos = getRandomPos();
-              closestEnemy.x = pos.x; closestEnemy.y = pos.y; closestEnemy.alive = true;
+            if (room.players[closestEnemy.id]) {
+              const spawn = getSpawnPoint(room.players);
+              closestEnemy.x = spawn.x; closestEnemy.y = spawn.y; closestEnemy.alive = true;
             }
           }, 3000);
           continue;
@@ -219,7 +255,6 @@ setInterval(() => {
     for (let i = room.bullets.length - 1; i >= 0; i--) {
       const b = room.bullets[i];
 
-      // Самонаведення ракетки
       if (b.homing) {
         let closestEnemy = null;
         let minDist = Infinity;
@@ -266,21 +301,20 @@ setInterval(() => {
         }
       }
 
-      // Влучання у гравців
       for (const pid in room.players) {
         const p = room.players[pid];
         if (!p.alive || pid === b.ownerId) continue;
 
         if (Math.hypot(p.x - b.x, p.y - b.y) < 18) {
           if (p.shield) {
-            p.shield = false; // Щит захищає від 1 пострілу
+            p.shield = false;
           } else {
             p.alive = false;
             if (room.players[b.ownerId]) room.players[b.ownerId].score += 1;
             setTimeout(() => {
               if (room.players[pid]) {
-                const pos = getRandomPos();
-                p.x = pos.x; p.y = pos.y; p.alive = true;
+                const spawn = getSpawnPoint(room.players);
+                p.x = spawn.x; p.y = spawn.y; p.alive = true;
               }
             }, 3000);
           }
@@ -290,3 +324,16 @@ setInterval(() => {
       }
 
       if (b.bounces > 5) room.bullets.splice(i, 1);
+    }
+
+    io.to(roomId).emit('tick', {
+      players: room.players,
+      bullets: room.bullets,
+      powerups: room.powerups,
+      miniTanks: room.miniTanks
+    });
+  }
+}, 1000 / 60);
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
