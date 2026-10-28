@@ -144,7 +144,6 @@
     socket.on('tick', (data) => {
       ctxGame.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
 
-      // Малювання стін мапи
       ctxGame.strokeStyle = '#333';
       ctxGame.lineWidth = 6;
       for (const w of mazeWalls) {
@@ -154,18 +153,17 @@
         ctxGame.stroke();
       }
 
-      // Малювання коробок з бонусами
       if (data.powerups) {
         for (const pu of data.powerups) {
           ctxGame.fillStyle = pu.type === 'shield' ? '#3498db' : pu.type === 'homing' ? '#e74c3c' : pu.type === 'pierce' ? '#9b59b6' : pu.type === 'machinegun' ? '#e67e22' : '#2ecc71';
           ctxGame.fillRect(pu.x - 12, pu.y - 12, 24, 24);
           ctxGame.fillStyle = '#fff';
           ctxGame.font = 'bold 12px sans-serif';
-          ctxGame.fillText(pu.type[0].toUpperCase(), pu.x - 4, pu.y + 4);
+          const label = pu.type === 'machinegun' ? 'M' : pu.type === 'rc' ? 'R' : pu.type[0].toUpperCase();
+          ctxGame.fillText(label, pu.x - 4, pu.y + 4);
         }
       }
 
-      // Малювання міні-танків
       if (data.miniTanks) {
         for (const rc of data.miniTanks) {
           ctxGame.fillStyle = '#d35400';
@@ -173,7 +171,6 @@
         }
       }
 
-      // Малювання куль
       ctxGame.fillStyle = '#c0392b';
       for (const b of data.bullets) {
         ctxGame.beginPath();
@@ -181,7 +178,6 @@
         ctxGame.fill();
       }
 
-      // Малювання гравців
       for (const id in data.players) {
         const p = data.players[id];
         if (!p.alive) continue;
@@ -213,9 +209,17 @@
 
         ctxGame.restore();
 
+        // Візуальний лічильник куль (маленькі кружечки над танком)
+        for (let i = 0; i < p.bulletsCount; i++) {
+          ctxGame.fillStyle = '#e74c3c';
+          ctxGame.beginPath();
+          ctxGame.arc(p.x - 22 + i * 5, p.y - 28, 2, 0, Math.PI * 2);
+          ctxGame.fill();
+        }
+
         ctxGame.fillStyle = '#000';
         ctxGame.font = '12px sans-serif';
-        ctxGame.fillText(`${p.name} (Очки: ${p.score})`, p.x - 30, p.y + 32);
+        ctxGame.fillText(`${p.name} (Очки: ${p.score})`, p.x - 35, p.y + 32);
       }
     });
   </script>
