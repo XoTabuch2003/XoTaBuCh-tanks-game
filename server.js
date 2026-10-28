@@ -13,48 +13,35 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
 
-// 7 різних мап лабіринтів
 const MAPS = [
-  // Мапа 1: Класична
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [150, 0, 150, 350], [300, 150, 300, 500], [450, 0, 450, 350], [600, 150, 600, 500]
   ],
-  // Мапа 2: Хрест
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [250, 0, 250, 200], [550, 300, 550, 500], [0, 250, 350, 250], [450, 250, 800, 250]
   ],
-  // Мапа 3: Коридори
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [100, 100, 700, 100], [100, 250, 700, 250], [100, 400, 700, 400]
   ],
-  // Мапа 4: Лабіринт з кімнатами
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [200, 0, 200, 400], [400, 100, 400, 500], [600, 0, 600, 400]
   ],
-  // Мапа 5: Острівці
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [200, 150, 350, 150], [200, 150, 200, 350], [450, 350, 600, 350], [600, 150, 600, 350]
   ],
-  // Мапа 6: Зігзаг
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [0, 150, 600, 150], [200, 350, 800, 350]
   ],
-  // Мапа 7: Лабіринт із тупиками
   [
     [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
     [150, 100, 150, 500], [300, 0, 300, 350], [450, 150, 450, 500], [600, 0, 600, 350]
   ]
-];
-
-const SPAWN_POINTS = [
-  { x: 70, y: 70 }, { x: 730, y: 70 }, { x: 730, y: 430 },
-  { x: 70, y: 430 }, { x: 370, y: 70 }, { x: 370, y: 430 }
 ];
 
 function checkWallCollision(x, y, radius, walls) {
@@ -72,6 +59,7 @@ function checkWallCollision(x, y, radius, walls) {
 }
 
 function getSpawnPoint(existingPlayers, walls) {
+  const SPAWN_POINTS = [{ x: 70, y: 70 }, { x: 730, y: 70 }, { x: 730, y: 430 }, { x: 70, y: 430 }, { x: 370, y: 70 }, { x: 370, y: 430 }];
   const shuffled = [...SPAWN_POINTS].sort(() => Math.random() - 0.5);
   for (const pt of shuffled) {
     if (checkWallCollision(pt.x, pt.y, 20, walls)) continue;
@@ -90,9 +78,7 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     
     if (!rooms[roomId]) {
-      // Обираємо випадкову мапу з 7 можливих
       const randomMap = MAPS[Math.floor(Math.random() * MAPS.length)];
-      
       rooms[roomId] = {
         id: roomId,
         walls: randomMap,
@@ -102,7 +88,6 @@ io.on('connection', (socket) => {
         miniTanks: []
       };
       
-      // Спавн бонусів кожні 25 секунд у рандомних місцях
       setInterval(() => {
         const room = rooms[roomId];
         if (room && room.powerups.length < 3) {
@@ -132,6 +117,8 @@ io.on('connection', (socket) => {
       alive: true,
       shield: false,
       ability: null,
+      bulletsCount: 10, // Початок з 10 кулями
+      lastBulletRegen: Date.now(),
       lastShot: 0
     };
 
@@ -146,6 +133,13 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     const p = room.players[socket.id];
     if (!p.alive) return;
+
+    // Відновлення 1 кулі кожні 2 секунди (ліміт 10)
+    const now = Date.now();
+    if (p.bulletsCount < 10 && now - p.lastBulletRegen > 2000) {
+      p.bulletsCount++;
+      p.lastBulletRegen = now;
+    }
 
     if (input.left) p.angle -= 0.06;
     if (input.right) p.angle += 0.06;
@@ -199,6 +193,9 @@ io.on('connection', (socket) => {
     const now = Date.now();
     const cooldown = p.ability === 'machinegun' ? 150 : 400;
     if (now - p.lastShot < cooldown) return;
+    
+    if (p.bulletsCount <= 0) return; // Немає доступних куль
+    p.bulletsCount--;
     p.lastShot = now;
 
     if (p.ability === 'rc') {
@@ -327,20 +324,25 @@ setInterval(() => {
         }
       }
 
+      // Влучання у гравців (тепер і в себе також!)
       for (const pid in room.players) {
         const p = room.players[pid];
-        if (!p.alive || pid === b.ownerId) continue;
+        if (!p.alive) continue;
 
         if (Math.hypot(p.x - b.x, p.y - b.y) < 18) {
           if (p.shield) {
             p.shield = false;
           } else {
             p.alive = false;
-            if (room.players[b.ownerId]) room.players[b.ownerId].score += 1;
+            // Якщо влучив у ворога — даємо ворогу очко, якщо у себе — очко не додається
+            if (b.ownerId !== pid && room.players[b.ownerId]) {
+              room.players[b.ownerId].score += 1;
+            }
             setTimeout(() => {
               if (room.players[pid]) {
                 const spawn = getSpawnPoint(room.players, room.walls);
                 p.x = spawn.x; p.y = spawn.y; p.alive = true;
+                p.bulletsCount = 10;
               }
             }, 3000);
           }
