@@ -6,18 +6,28 @@
   <title>Танки в Лабіринті Онлайн</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body { background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; overflow: hidden; padding-top: 5px; }
+    body { background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; overflow-x: hidden; padding: 5px; }
     #editor-screen, #game-screen { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 800px; }
     .hidden { display: none !important; }
+    
+    /* Адаптивне ігрове поле, що завжди вміщується в екрані */
     canvas { background: #e0e0e0; border: 2px solid #444; border-radius: 6px; width: 100%; max-width: 800px; height: auto; aspect-ratio: 800 / 500; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    
     .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
     button, input { padding: 10px 18px; border-radius: 6px; border: none; font-size: 16px; font-weight: bold; }
     button { background: #4CAF50; color: white; cursor: pointer; }
     button:active { transform: scale(0.98); }
     input[type="text"] { background: #333; color: white; border: 1px solid #555; text-align: center; }
-    #touch-controls { display: flex; justify-content: space-between; width: 100%; max-width: 800px; margin-top: 10px; padding: 0 10px; }
-    .btn-touch { width: 65px; height: 65px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; font-size: 22px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
-    .btn-fire { background: rgba(255, 50, 50, 0.7); width: 75px; height: 75px; }
+    
+    /* Панель рахунку під полем */
+    #score-panel { display: flex; justify-content: space-between; width: 100%; max-width: 800px; background: #222; padding: 8px 15px; border-radius: 6px; margin-top: 8px; font-size: 15px; font-weight: bold; }
+    .ammo-dots { display: flex; gap: 4px; align-items: center; }
+    .dot { width: 8px; height: 8px; background: #e74c3c; border-radius: 50%; display: inline-block; }
+    .dot.empty { background: #555; }
+
+    #touch-controls { display: flex; justify-content: space-between; width: 100%; max-width: 800px; margin-top: 8px; padding: 0 5px; }
+    .btn-touch { width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; font-size: 20px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+    .btn-fire { background: rgba(255, 50, 50, 0.7); width: 70px; height: 70px; }
   </style>
 </head>
 <body>
@@ -38,9 +48,15 @@
   <div id="game-screen" class="hidden">
     <canvas id="gameCanvas" width="800" height="500"></canvas>
     
+    <!-- Панель знизу з рахунком та кулями -->
+    <div id="score-panel">
+      <div id="player-name-score">Гравець: 0 очок</div>
+      <div class="ammo-dots" id="ammoContainer">Кулі: </div>
+    </div>
+
     <!-- Сенсорне керування для смартфонів -->
     <div id="touch-controls">
-      <div style="display: grid; grid-template-columns: repeat(3, 55px); gap: 4px;">
+      <div style="display: grid; grid-template-columns: repeat(3, 50px); gap: 3px;">
         <div></div><div class="btn-touch" id="btnUp">▲</div><div></div>
         <div class="btn-touch" id="btnLeft">◄</div><div></div><div class="btn-touch" id="btnRight">►</div>
         <div></div><div class="btn-touch" id="btnDown">▼</div><div></div>
@@ -209,17 +225,17 @@
 
         ctxGame.restore();
 
-        // Візуальний лічильник куль (маленькі кружечки над танком)
-        for (let i = 0; i < p.bulletsCount; i++) {
-          ctxGame.fillStyle = '#e74c3c';
-          ctxGame.beginPath();
-          ctxGame.arc(p.x - 22 + i * 5, p.y - 28, 2, 0, Math.PI * 2);
-          ctxGame.fill();
+        // Оновлення інформації на панелі знизу для поточного гравця
+        if (id === socket.id) {
+          document.getElementById('player-name-score').innerText = `${p.name} | Очки: ${p.score}`;
+          const ammoContainer = document.getElementById('ammoContainer');
+          ammoContainer.innerHTML = 'Кулі: ';
+          for (let i = 0; i < 10; i++) {
+            const dot = document.createElement('span');
+            dot.className = i < p.bulletsCount ? 'dot' : 'dot empty';
+            ammoContainer.appendChild(dot);
+          }
         }
-
-        ctxGame.fillStyle = '#000';
-        ctxGame.font = '12px sans-serif';
-        ctxGame.fillText(`${p.name} (Очки: ${p.score})`, p.x - 35, p.y + 32);
       }
     });
   </script>
