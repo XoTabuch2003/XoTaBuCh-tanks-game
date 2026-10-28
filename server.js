@@ -320,7 +320,6 @@ setInterval(() => {
         }
       }
 
-      // Влучання у гравців (тепер куля вбиває і власника, якщо він зловить власний рикошет)
       for (const pid in room.players) {
         const p = room.players[pid];
         if (!p.alive) continue;
@@ -330,7 +329,6 @@ setInterval(() => {
             p.shield = false;
           } else {
             p.alive = false;
-            // Якщо влучив у ворога — плюс очко ворогу. Якщо у себе — очко не додається.
             if (b.ownerId !== pid && room.players[b.ownerId]) {
               room.players[b.ownerId].score += 1;
             }
