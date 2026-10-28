@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Танки в Лабіринті Онлайн</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+    #editor-screen, #game-screen { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 800px; }
+    .hidden { display: none !important; }
+    canvas { background: #e0e0e0; border: 3px solid #444; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    button, input { padding: 10px 18px; border-radius: 6px; border: none; font-size: 16px; font-weight: bold; }
+    button { background: #4CAF50; color: white; cursor: pointer; }
+    button:active { transform: scale(0.98); }
+    input[type="text"] { background: #333; color: white; border: 1px solid #555; text-align: center; }
+    #touch-controls { display: flex; justify-content: space-between; width: 100%; max-width: 800px; margin-top: 15px; padding: 0 20px; }
+    .btn-touch { width: 70px; height: 70px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; font-size: 24px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+    .btn-fire { background: rgba(255, 50, 50, 0.6); width: 80px; height: 80px; }
+  </style>
+</head>
+<body>
+
+  <!-- Екран малювання танка -->
+  <div id="editor-screen">
+    <h2 style="margin-bottom: 10px;">Намалюй свій танк пальцем!</h2>
+    <canvas id="drawCanvas" width="200" height="200"></canvas>
+    <div class="controls">
+      <input type="color" id="colorPicker" value="#00bb00">
+      <button onclick="clearCanvas()">Очистити</button>
+      <input type="text" id="roomInput" placeholder="Код кімнати" value="main">
+      <button onclick="joinGame()">В БІЙ!</button>
+    </div>
+  </div>
+
+  <!-- Екран гри -->
+  <div id="game-screen" class="hidden">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    
+    <!-- Сенсорне керування для смартфонів -->
+    <div id="touch-controls">
+      <div style="display: grid; grid-template-columns: repeat(3, 60px); gap: 5px;">
+        <div></div><div class="btn-touch" id="btnUp">▲</div><div></div>
+        <div class="btn-touch" id="btnLeft">◄</div><div></div><div class="btn-touch" id="btnRight">►</div>
+        <div></div><div class="btn-touch" id="btnDown">▼</div><div></div>
+      </div>
+      <div class="btn-touch btn-fire" id="btnFire">🔥</div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    const drawCanvas = document.getElementById('drawCanvas');
+    const ctxDraw = drawCanvas.getContext('2d');
+    let drawing = false;
+
+    function clearCanvas() {
+      ctxDraw.fillStyle = '#ffffff';
+      ctxDraw.fillRect(0, 0, 200, 200);
+      ctxDraw.fillStyle = '#aaaaaa';
+      ctxDraw.fillRect(90, 20, 20, 80);
+    }
+    clearCanvas();
+
+    const getPos = (e) => {
+      const rect = drawCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const startDraw = (e) => { drawing = true; draw(e); };
+    const stopDraw = () => { drawing = false; ctxDraw.beginPath(); };
+    const draw = (e) => {
+      if (!drawing) return;
+      const pos = getPos(e);
+      ctxDraw.lineWidth = 12;
+      ctxDraw.lineCap = 'round';
+      ctxDraw.strokeStyle = document.getElementById('colorPicker').value;
+      ctxDraw.lineTo(pos.x, pos.y);
+      ctxDraw.stroke();
+      ctxDraw.beginPath();
+      ctxDraw.moveTo(pos.x, pos.y);
+    };
+
+    drawCanvas.addEventListener('mousedown', startDraw);
+    drawCanvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDraw);
+    drawCanvas.addEventListener('touchstart', startDraw);
+    drawCanvas.addEventListener('touchmove', draw);
+    window.addEventListener('touchend', stopDraw);
+
+    const gameCanvas = document.getElementById('gameCanvas');
+    const ctxGame = gameCanvas.getContext('2d');
+    const playerImages = {};
+    const inputState = { forward: false, backward: false, left: false, right: false };
+
+    function joinGame() {
+      const skinData = drawCanvas.toDataURL();
+      const roomId = document.getElementById('roomInput').value || 'main';
+
+      document.getElementById('editor-screen').classList.add('hidden');
+      document.getElementById('game-screen').classList.remove('hidden');
+
+      socket.emit('joinRoom', { roomId, skinData });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') inputState.forward = true;
+      if (e.code === 'KeyS' || e.code === 'ArrowDown') inputState.backward = true;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') inputState.left = true;
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') inputState.right = true;
+      if (e.code === 'Space') socket.emit('shoot');
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') inputState.forward = false;
+      if (e.code === 'KeyS' || e.code === 'ArrowDown') inputState.backward = false;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') inputState.left = false;
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') inputState.right = false;
+    });
+
+    const setupTouchBtn = (id, key) => {
+      const btn = document.getElementById(id);
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); inputState[key] = true; });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); inputState[key] = false; });
+    };
+    setupTouchBtn('btnUp', 'forward');
+    setupTouchBtn('btnDown', 'backward');
+    setupTouchBtn('btnLeft', 'left');
+    setupTouchBtn('btnRight', 'right');
+    document.getElementById('btnFire').addEventListener('touchstart', (e) => { e.preventDefault(); socket.emit('shoot'); });
+
+    setInterval(() => {
+      socket.emit('playerInput', inputState);
+    }, 1000 / 60);
+
+    let mazeWalls = [];
+    socket.on('initRoom', (data) => { mazeWalls = data.walls; });
+
+    socket.on('tick', (data) => {
+      ctxGame.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+      ctxGame.strokeStyle = '#333';
+      ctxGame.lineWidth = 6;
+      for (const w of mazeWalls) {
+        ctxGame.beginPath();
+        ctxGame.moveTo(w[0], w[1]);
+        ctxGame.lineTo(w[2], w[3]);
+        ctxGame.stroke();
+      }
+
+      ctxGame.fillStyle = '#e74c3c';
+      for (const b of data.bullets) {
+        ctxGame.beginPath();
+        ctxGame.arc(b.x, b.y, 5, 0, Math.PI * 2);
+        ctxGame.fill();
+      }
+
+      for (const id in data.players) {
+        const p = data.players[id];
+        if (!p.alive) continue;
+
+        if (!playerImages[id] && p.skin) {
+          const img = new Image();
+          img.src = p.skin;
+          playerImages[id] = img;
+        }
+
+        ctxGame.save();
+        ctxGame.translate(p.x, p.y);
+        ctxGame.rotate(p.angle + Math.PI / 2);
+
+        if (playerImages[id]) {
+          ctxGame.drawImage(playerImages[id], -20, -20, 40, 40);
+        } else {
+          ctxGame.fillStyle = 'green';
+          ctxGame.fillRect(-15, -15, 30, 30);
+        }
+
+        ctxGame.restore();
+
+        ctxGame.fillStyle = '#000';
+        ctxGame.font = '12px sans-serif';
+        ctxGame.fillText(`Очки: ${p.score}`, p.x - 20, p.y + 32);
+      }
+    });
+  </script>
+</body>
+</html>
