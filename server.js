@@ -13,19 +13,48 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
 
-const MAZE_WALLS = [
-  [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
-  [150, 0, 150, 350], [300, 150, 300, 500], [450, 0, 450, 350], [600, 150, 600, 500]
+// 7 різних мап лабіринтів
+const MAPS = [
+  // Мапа 1: Класична
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [150, 0, 150, 350], [300, 150, 300, 500], [450, 0, 450, 350], [600, 150, 600, 500]
+  ],
+  // Мапа 2: Хрест
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [250, 0, 250, 200], [550, 300, 550, 500], [0, 250, 350, 250], [450, 250, 800, 250]
+  ],
+  // Мапа 3: Коридори
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [100, 100, 700, 100], [100, 250, 700, 250], [100, 400, 700, 400]
+  ],
+  // Мапа 4: Лабіринт з кімнатами
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [200, 0, 200, 400], [400, 100, 400, 500], [600, 0, 600, 400]
+  ],
+  // Мапа 5: Острівці
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [200, 150, 350, 150], [200, 150, 200, 350], [450, 350, 600, 350], [600, 150, 600, 350]
+  ],
+  // Мапа 6: Зігзаг
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [0, 150, 600, 150], [200, 350, 800, 350]
+  ],
+  // Мапа 7: Лабіринт із тупиками
+  [
+    [0, 0, 800, 0], [0, 0, 0, 500], [800, 0, 800, 500], [0, 500, 800, 500],
+    [150, 100, 150, 500], [300, 0, 300, 350], [450, 150, 450, 500], [600, 0, 600, 350]
+  ]
 ];
 
-// Безпечні фіксовані точки спавну в різних кутах лабіринту
 const SPAWN_POINTS = [
-  { x: 70, y: 70 },
-  { x: 730, y: 70 },
-  { x: 730, y: 430 },
-  { x: 70, y: 430 },
-  { x: 370, y: 70 },
-  { x: 370, y: 430 }
+  { x: 70, y: 70 }, { x: 730, y: 70 }, { x: 730, y: 430 },
+  { x: 70, y: 430 }, { x: 370, y: 70 }, { x: 370, y: 430 }
 ];
 
 function checkWallCollision(x, y, radius, walls) {
@@ -42,22 +71,18 @@ function checkWallCollision(x, y, radius, walls) {
   return false;
 }
 
-// Отримання вільної точки спавну
-function getSpawnPoint(existingPlayers) {
-  // Перемішуємо точки спавну
+function getSpawnPoint(existingPlayers, walls) {
   const shuffled = [...SPAWN_POINTS].sort(() => Math.random() - 0.5);
   for (const pt of shuffled) {
+    if (checkWallCollision(pt.x, pt.y, 20, walls)) continue;
     let occupied = false;
     for (const pid in existingPlayers) {
       const p = existingPlayers[pid];
-      if (Math.hypot(p.x - pt.x, p.y - pt.y) < 50) {
-        occupied = true;
-        break;
-      }
+      if (Math.hypot(p.x - pt.x, p.y - pt.y) < 50) { occupied = true; break; }
     }
     if (!occupied) return pt;
   }
-  return SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
+  return { x: 100, y: 100 };
 }
 
 io.on('connection', (socket) => {
@@ -65,32 +90,38 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     
     if (!rooms[roomId]) {
+      // Обираємо випадкову мапу з 7 можливих
+      const randomMap = MAPS[Math.floor(Math.random() * MAPS.length)];
+      
       rooms[roomId] = {
         id: roomId,
+        walls: randomMap,
         players: {},
         bullets: [],
         powerups: [],
         miniTanks: []
       };
       
+      // Спавн бонусів кожні 25 секунд у рандомних місцях
       setInterval(() => {
         const room = rooms[roomId];
         if (room && room.powerups.length < 3) {
           let x, y;
           do {
-            x = 50 + Math.random() * 700;
-            y = 50 + Math.random() * 400;
-          } while (checkWallCollision(x, y, 30, MAZE_WALLS));
+            x = 60 + Math.random() * 680;
+            y = 60 + Math.random() * 380;
+          } while (checkWallCollision(x, y, 30, room.walls));
           
           const types = ['shield', 'homing', 'pierce', 'machinegun', 'rc'];
           const type = types[Math.floor(Math.random() * types.length)];
           room.powerups.push({ id: Math.random().toString(), x, y, type });
         }
-      }, 10000);
+      }, 25000);
     }
 
-    const spawn = getSpawnPoint(rooms[roomId].players);
-    rooms[roomId].players[socket.id] = {
+    const room = rooms[roomId];
+    const spawn = getSpawnPoint(room.players, room.walls);
+    room.players[socket.id] = {
       id: socket.id,
       name: playerName || 'Танкіст',
       skin: skinData,
@@ -105,7 +136,7 @@ io.on('connection', (socket) => {
     };
 
     socket.roomId = roomId;
-    io.to(roomId).emit('initRoom', { roomId, walls: MAZE_WALLS });
+    io.to(roomId).emit('initRoom', { roomId, walls: room.walls });
   });
 
   socket.on('playerInput', (input) => {
@@ -127,9 +158,7 @@ io.on('connection', (socket) => {
       const nextX = p.x + Math.cos(p.angle) * speed;
       const nextY = p.y + Math.sin(p.angle) * speed;
       
-      // Перевірка зіткнення зі стінами
-      if (!checkWallCollision(nextX, nextY, 18, MAZE_WALLS)) {
-        // Перевірка зіткнення з іншими танками (щоб не проїжджати крізь них)
+      if (!checkWallCollision(nextX, nextY, 18, room.walls)) {
         let collisionWithTank = false;
         for (const pid in room.players) {
           if (pid === socket.id) continue;
@@ -140,11 +169,7 @@ io.on('connection', (socket) => {
             break;
           }
         }
-
-        if (!collisionWithTank) {
-          p.x = nextX;
-          p.y = nextY;
-        }
+        if (!collisionWithTank) { p.x = nextX; p.y = nextY; }
       }
     }
 
@@ -167,7 +192,8 @@ io.on('connection', (socket) => {
     const roomId = socket.roomId;
     if (!roomId || !rooms[roomId] || !rooms[roomId].players[socket.id]) return;
 
-    const p = rooms[roomId].players[socket.id];
+    const room = rooms[roomId];
+    const p = room.players[socket.id];
     if (!p.alive) return;
 
     const now = Date.now();
@@ -177,7 +203,7 @@ io.on('connection', (socket) => {
 
     if (p.ability === 'rc') {
       p.ability = null;
-      rooms[roomId].miniTanks.push({
+      room.miniTanks.push({
         ownerId: socket.id,
         x: p.x + Math.cos(p.angle) * 25,
         y: p.y + Math.sin(p.angle) * 25,
@@ -190,7 +216,7 @@ io.on('connection', (socket) => {
     const isPierce = p.ability === 'pierce';
     if (p.ability && p.ability !== 'machinegun') p.ability = null;
 
-    rooms[roomId].bullets.push({
+    room.bullets.push({
       ownerId: socket.id,
       x: p.x + Math.cos(p.angle) * 22,
       y: p.y + Math.sin(p.angle) * 22,
@@ -239,14 +265,14 @@ setInterval(() => {
           room.miniTanks.splice(i, 1);
           setTimeout(() => {
             if (room.players[closestEnemy.id]) {
-              const spawn = getSpawnPoint(room.players);
+              const spawn = getSpawnPoint(room.players, room.walls);
               closestEnemy.x = spawn.x; closestEnemy.y = spawn.y; closestEnemy.alive = true;
             }
           }, 3000);
           continue;
         }
       }
-      if (checkWallCollision(rc.x, rc.y, 10, MAZE_WALLS)) {
+      if (checkWallCollision(rc.x, rc.y, 10, room.walls)) {
         room.miniTanks.splice(i, 1);
       }
     }
@@ -285,7 +311,7 @@ setInterval(() => {
         if (b.x <= 5 || b.x >= 795) { b.vx *= -1; b.bounces++; }
         if (b.y <= 5 || b.y >= 495) { b.vy *= -1; b.bounces++; }
 
-        for (const w of MAZE_WALLS) {
+        for (const w of room.walls) {
           const x1 = w[0], y1 = w[1], x2 = w[2], y2 = w[3];
           if (x1 === x2 && Math.abs(b.x - x1) < 6 && b.y >= Math.min(y1, y2) && b.y <= Math.max(y1, y2)) {
             b.vx *= -1; b.x += b.vx * 2; b.bounces++; break;
@@ -313,7 +339,7 @@ setInterval(() => {
             if (room.players[b.ownerId]) room.players[b.ownerId].score += 1;
             setTimeout(() => {
               if (room.players[pid]) {
-                const spawn = getSpawnPoint(room.players);
+                const spawn = getSpawnPoint(room.players, room.walls);
                 p.x = spawn.x; p.y = spawn.y; p.alive = true;
               }
             }, 3000);
