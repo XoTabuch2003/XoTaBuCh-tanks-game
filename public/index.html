@@ -10,16 +10,14 @@
     #editor-screen, #game-screen { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 800px; }
     .hidden { display: none !important; }
     
-    /* Адаптивне ігрове поле, що завжди вміщується в екрані */
     canvas { background: #e0e0e0; border: 2px solid #444; border-radius: 6px; width: 100%; max-width: 800px; height: auto; aspect-ratio: 800 / 500; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
     
-    .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
     button, input { padding: 10px 18px; border-radius: 6px; border: none; font-size: 16px; font-weight: bold; }
     button { background: #4CAF50; color: white; cursor: pointer; }
     button:active { transform: scale(0.98); }
     input[type="text"] { background: #333; color: white; border: 1px solid #555; text-align: center; }
     
-    /* Панель рахунку під полем */
     #score-panel { display: flex; justify-content: space-between; width: 100%; max-width: 800px; background: #222; padding: 8px 15px; border-radius: 6px; margin-top: 8px; font-size: 15px; font-weight: bold; }
     .ammo-dots { display: flex; gap: 4px; align-items: center; }
     .dot { width: 8px; height: 8px; background: #e74c3c; border-radius: 50%; display: inline-block; }
@@ -32,13 +30,16 @@
 </head>
 <body>
 
-  <!-- Екран малювання танка -->
+  <!-- Екран малювання танка та введення ніку -->
   <div id="editor-screen">
-    <h2 style="margin-bottom: 10px; font-size: 20px;">Намалюй свій танк пальцем!</h2>
+    <h2 style="margin-bottom: 10px; font-size: 20px;">Намалюй свій танк і введи нік!</h2>
     <canvas id="drawCanvas" width="200" height="200" style="width: 200px; height: 200px; aspect-ratio: auto;"></canvas>
     <div class="controls">
       <input type="color" id="colorPicker" value="#00bb00">
       <button onclick="clearCanvas()">Очистити</button>
+    </div>
+    <div class="controls" style="margin-top: 8px;">
+      <input type="text" id="nameInput" placeholder="Твій нікнейм" value="Танкіст">
       <input type="text" id="roomInput" placeholder="Код кімнати" value="main">
       <button onclick="joinGame()">В БІЙ!</button>
     </div>
@@ -116,12 +117,13 @@
 
     function joinGame() {
       const skinData = drawCanvas.toDataURL();
+      const playerName = document.getElementById('nameInput').value || 'Танкіст';
       const roomId = document.getElementById('roomInput').value || 'main';
 
       document.getElementById('editor-screen').classList.add('hidden');
       document.getElementById('game-screen').classList.remove('hidden');
 
-      socket.emit('joinRoom', { roomId, skinData });
+      socket.emit('joinRoom', { roomId, playerName, skinData });
     }
 
     window.addEventListener('keydown', (e) => {
@@ -225,7 +227,13 @@
 
         ctxGame.restore();
 
-        // Оновлення інформації на панелі знизу для поточного гравця
+        // Відображення нікнейма над кожним танком для всіх гравців
+        ctxGame.fillStyle = '#222';
+        ctxGame.font = 'bold 12px sans-serif';
+        ctxGame.textAlign = 'center';
+        ctxGame.fillText(`${p.name} (${p.score})`, p.x, p.y - 28);
+
+        // Панель знизу для поточного гравця
         if (id === socket.id) {
           document.getElementById('player-name-score').innerText = `${p.name} | Очки: ${p.score}`;
           const ammoContainer = document.getElementById('ammoContainer');
